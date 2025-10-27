@@ -3,6 +3,7 @@ const socket = io();
 
 // State
 let currentShortCode = null;
+let referrerChart = null; // Store chart instance
 
 // DOM Elements
 const urlInput = document.getElementById('urlInput');
@@ -413,8 +414,8 @@ function updateAnalyticsDisplay(analytics) {
     // Update browsers chart
     updateChart('browsersChart', analytics.browsers || {});
     
-    // Update referrers chart
-    updateChart('referrersChart', analytics.referrers || {});
+    // Update referrers donut chart
+    updateReferrerChart(analytics.referrers || {});
     
     // Update click history
     updateClickHistory(analytics.clickHistory || []);
@@ -479,6 +480,135 @@ function updateClickHistory(history) {
             </div>
         </div>
     `).join('');
+}
+
+// Update Referrer Donut Chart
+function updateReferrerChart(referrers) {
+    const canvas = document.getElementById('referrerDonutChart');
+    const legendContainer = document.getElementById('referrerLegend');
+    
+    if (Object.keys(referrers).length === 0) {
+        canvas.parentElement.innerHTML = '<p style="color: #64748b; text-align: center; padding: 40px;">No referrer data yet</p>';
+        return;
+    }
+    
+    // Calculate total clicks
+    const total = Object.values(referrers).reduce((sum, val) => sum + val, 0);
+    
+    // Sort referrers by count and get data
+    const sortedReferrers = Object.entries(referrers)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({ name, count }));
+    
+    // Define colors for different referrers
+    const colorMap = {
+        'Google': '#EA4335',
+        'LinkedIn': '#0A66C2',
+        'Facebook': '#1877F2',
+        'Unknown': '#8B5CF6',
+        'Reddit': '#FF4500',
+        'Instagram': '#E1306C',
+        'X (formerly Twitter)': '#1DA1F2',
+        'Twitter': '#1DA1F2',
+        'Bitly Pages': '#2C3E50',
+        'Direct': '#64748B'
+    };
+    
+    // Map referrer names to display names
+    const nameMap = {
+        'twitter.com': 'X (formerly Twitter)',
+        'x.com': 'X (formerly Twitter)',
+        't.co': 'X (formerly Twitter)',
+        'Direct': 'Unknown'
+    };
+    
+    // Process data for chart
+    const chartData = sortedReferrers.map((ref, index) => {
+        let displayName = ref.name;
+        
+        // Try to extract domain name
+        if (ref.name.includes('://')) {
+            try {
+                const url = new URL(ref.name);
+                displayName = url.hostname.replace('www.', '');
+            } catch (e) {
+                displayName = ref.name;
+            }
+        }
+        
+        // Apply name mapping
+        displayName = nameMap[displayName] || displayName;
+        
+        // Capitalize first letter
+        displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+        
+        // Get color
+        const color = colorMap[displayName] || `hsl(${index * 40}, 70%, 50%)`;
+        
+        return {
+            name: displayName,
+            count: ref.count,
+            percentage: ((ref.count / total) * 100).toFixed(1),
+            color: color
+        };
+    });
+    
+    // Destroy existing chart if it exists
+    if (referrerChart) {
+        referrerChart.destroy();
+    }
+    
+    // Create donut chart
+    const ctx = canvas.getContext('2d');
+    referrerChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: chartData.map(d => d.name),
+            datasets: [{
+                data: chartData.map(d => d.count),
+                backgroundColor: chartData.map(d => d.color),
+                borderWidth: 3,
+                borderColor: '#ffffff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false // We'll create custom legend
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed;
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${label}: ${value} (${percentage}%)`;
+                        }
+                    }
+                }
+            },
+            cutout: '60%'
+        }
+    });
+    
+    // Create custom legend
+    legendContainer.innerHTML = `
+        <div class="referrer-total">
+            <div class="total-number">${total}</div>
+            <div class="total-label">CLICKS + SCANS</div>
+        </div>
+        <div class="referrer-list">
+            ${chartData.map(item => `
+                <div class="referrer-item">
+                    <div class="referrer-color" style="background-color: ${item.color}"></div>
+                    <div class="referrer-name">${item.name}</div>
+                    <div class="referrer-count">${item.count}</div>
+                </div>
+            `).join('')}
+        </div>
+    `;
 }
 
 // Track Impression

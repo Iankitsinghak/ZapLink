@@ -633,6 +633,83 @@ header h1 {
     transition: width 0.5s ease;
 }
 
+/* Referrer Donut Chart */
+.referrer-chart-container {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 40px;
+    align-items: center;
+    padding: 20px;
+}
+
+#referrerDonutChart {
+    max-width: 300px;
+    max-height: 300px;
+}
+
+.referrer-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.referrer-total {
+    text-align: center;
+}
+
+.total-number {
+    font-size: 3rem;
+    font-weight: bold;
+    color: var(--dark);
+    line-height: 1;
+}
+
+.total-label {
+    font-size: 0.85rem;
+    color: var(--gray);
+    margin-top: 5px;
+    letter-spacing: 0.5px;
+}
+
+.referrer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.referrer-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    border-radius: 8px;
+    transition: background 0.2s ease;
+}
+
+.referrer-item:hover {
+    background: var(--light);
+}
+
+.referrer-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.referrer-name {
+    flex: 1;
+    font-weight: 500;
+    color: var(--dark);
+}
+
+.referrer-count {
+    font-weight: bold;
+    color: var(--dark);
+    min-width: 40px;
+    text-align: right;
+}
+
 .click-history {
     max-height: 300px;
     overflow-y: auto;
@@ -699,6 +776,16 @@ header h1 {
         width: 100%;
         margin-right: 0;
         margin-bottom: 10px;
+    }
+    
+    /* Referrer chart responsive */
+    .referrer-chart-container {
+        grid-template-columns: 1fr;
+        gap: 30px;
+    }
+    
+    #referrerDonutChart {
+        margin: 0 auto;
     }
 }
 

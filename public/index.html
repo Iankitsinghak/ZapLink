@@ -145,8 +145,11 @@
                     </div>
                     <div class="analytics-row">
                         <div class="analytics-card full-width">
-                            <h3>🔗 Top Referrers</h3>
-                            <div id="referrersChart" class="chart-container"></div>
+                            <h3>🔗 Clicks + scans by referrer</h3>
+                            <div id="referrersChart" class="referrer-chart-container">
+                                <canvas id="referrerDonutChart"></canvas>
+                                <div id="referrerLegend" class="referrer-legend"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="analytics-row">
@@ -166,6 +169,9 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Chart.js for donut chart -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     
     <script src="/socket.io/socket.io.js"></script>
     <script src="firebase-config.js"></script>
