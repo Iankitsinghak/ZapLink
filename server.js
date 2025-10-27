@@ -107,6 +107,20 @@ function addUTMParams(url, utmParams) {
 
 // API Routes
 
+// Helper function to get base URL from request
+function getBaseUrl(req) {
+  // Try Vercel-specific headers first
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+  
+  // Use environment variable if set, otherwise construct from request
+  if (process.env.BASE_URL && process.env.BASE_URL !== 'undefined') {
+    return process.env.BASE_URL;
+  }
+  
+  return `${protocol}://${host}`;
+}
+
 // Create short link (requires authentication)
 app.post('/api/shorten', verifyToken, async (req, res) => {
   const { url, utmParams } = req.body;
@@ -133,7 +147,8 @@ app.post('/api/shorten', verifyToken, async (req, res) => {
   }
 
   const shortCode = generateShortCode();
-  const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
+  const baseUrl = getBaseUrl(req);
+  const shortUrl = `${baseUrl}/${shortCode}`;
   
   // Store link data
   const linkData = {
