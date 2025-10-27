@@ -781,6 +781,21 @@ header h1 {
     color: var(--dark);
 }
 
+.share-info {
+    padding: 15px 25px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+    border-left: 4px solid var(--primary-color);
+}
+
+.share-info p {
+    margin: 0;
+    color: var(--dark);
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .share-modal-body {
     padding: 25px;
     display: grid;
@@ -817,6 +832,18 @@ header h1 {
 .platform-name {
     font-size: 0.9rem;
     text-align: center;
+}
+
+.share-footer {
+    padding: 15px 25px;
+    background: var(--light);
+    text-align: center;
+    border-top: 1px solid #e5e7eb;
+}
+
+.share-footer small {
+    color: var(--gray);
+    font-size: 0.85rem;
 }
 
 .click-history {

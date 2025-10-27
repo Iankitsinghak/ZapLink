@@ -358,48 +358,13 @@ app.post('/api/track/impression/:shortCode', async (req, res) => {
   }
 });
 
-// Track share
+// Track share (deprecated - now tracked automatically via UTM parameters)
+// Keeping endpoint for backward compatibility but shares are counted on click with UTM
 app.post('/api/track/share/:shortCode', async (req, res) => {
   const { shortCode } = req.params;
-  
-  try {
-    const analyticsRef = db.collection(COLLECTIONS.ANALYTICS).doc(shortCode);
-    const doc = await analyticsRef.get();
-    
-    if (doc.exists) {
-      await analyticsRef.update({
-        shares: admin.firestore.FieldValue.increment(1)
-      });
-      
-      const updated = await analyticsRef.get();
-      const stats = updated.data();
-      
-      io.emit(`analytics:${shortCode}`, {
-        type: 'share',
-        data: stats
-      });
-      
-      return res.json({ success: true });
-    }
-  } catch (error) {
-    console.error('Error tracking share:', error);
-  }
-  
-  // Fallback to in-memory
-  const stats = analytics.get(shortCode);
-  if (stats) {
-    stats.shares++;
-    analytics.set(shortCode, stats);
-    
-    io.emit(`analytics:${shortCode}`, {
-      type: 'share',
-      data: stats
-    });
-    
-    res.json({ success: true });
-  } else {
-    res.status(404).json({ error: 'Link not found' });
-  }
+  // Shares are now tracked automatically when links with utm_source are clicked
+  // No need to manually increment here
+  res.json({ success: true, message: 'Shares tracked via UTM parameters' });
 });
 
 // Redirect short link and track click
@@ -508,7 +473,8 @@ app.get('/:shortCode', async (req, res) => {
     device: deviceType,
     browser,
     referrer: referrerSource,
-    userAgent: userAgent.substring(0, 200) // Store truncated UA for debugging
+    userAgent: userAgent.substring(0, 200), // Store truncated UA for debugging
+    isShared: utmSource ? true : false // Track if this click came from a share
   };
 
   try {
@@ -519,13 +485,21 @@ app.get('/:shortCode', async (req, res) => {
     if (doc.exists) {
       const currentData = doc.data();
       
-      await analyticsRef.update({
+      // Increment shares if this click has a UTM source (meaning it was shared)
+      const updateData = {
         clicks: admin.firestore.FieldValue.increment(1),
         [`devices.${deviceType}`]: admin.firestore.FieldValue.increment(1),
         [`browsers.${browser}`]: admin.firestore.FieldValue.increment(1),
-        [`referrers.${referrer}`]: admin.firestore.FieldValue.increment(1),
+        [`referrers.${referrerSource}`]: admin.firestore.FieldValue.increment(1),
         clickHistory: admin.firestore.FieldValue.arrayUnion(clickData)
-      });
+      };
+      
+      // If UTM source exists, count it as a share
+      if (utmSource) {
+        updateData.shares = admin.firestore.FieldValue.increment(1);
+      }
+      
+      await analyticsRef.update(updateData);
       
       const updated = await analyticsRef.get();
       const stats = updated.data();
@@ -545,8 +519,13 @@ app.get('/:shortCode', async (req, res) => {
       stats.clicks++;
       stats.devices[deviceType] = (stats.devices[deviceType] || 0) + 1;
       stats.browsers[browser] = (stats.browsers[browser] || 0) + 1;
-      stats.referrers[referrer] = (stats.referrers[referrer] || 0) + 1;
+      stats.referrers[referrerSource] = (stats.referrers[referrerSource] || 0) + 1;
       stats.clickHistory.push(clickData);
+      
+      // Count as share if UTM source exists
+      if (utmSource) {
+        stats.shares++;
+      }
       
       analytics.set(shortCode, stats);
       

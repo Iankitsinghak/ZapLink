@@ -658,6 +658,9 @@ function showShareMenu(baseUrl, shortCode) {
                 <h3>📤 Share Link</h3>
                 <button class="share-modal-close" onclick="closeShareMenu()">&times;</button>
             </div>
+            <div class="share-info">
+                <p>💡 Each click from your shared link counts as a share!</p>
+            </div>
             <div class="share-modal-body">
                 ${platforms.map(platform => `
                     <button class="share-platform-btn" onclick="shareToplatform('${platform.utm}', '${baseUrl}', ${platform.copyOnly || false}, '${platform.url || ''}', '${shortCode}')">
@@ -665,6 +668,9 @@ function showShareMenu(baseUrl, shortCode) {
                         <span class="platform-name">${platform.name}</span>
                     </button>
                 `).join('')}
+            </div>
+            <div class="share-footer">
+                <small>Share with friends and watch your analytics grow! 📊</small>
             </div>
         </div>
     `;
