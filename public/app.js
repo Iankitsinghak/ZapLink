@@ -662,14 +662,13 @@ async function loadLinks() {
                 for (const doc of snapshot.docs) {
                     const linkData = doc.data();
                     
-                    // Get click count for this link
-                    const clicksSnapshot = await db.collection('analytics')
-                        .where('shortCode', '==', linkData.shortCode)
-                        .get();
+                    // Get analytics data for this link (single document per link)
+                    const analyticsDoc = await db.collection('analytics').doc(linkData.shortCode).get();
+                    const analyticsData = analyticsDoc.exists ? analyticsDoc.data() : { clicks: 0 };
                     
                     userLinks.push({
                         ...linkData,
-                        clicks: clicksSnapshot.size,
+                        clicks: analyticsData.clicks || 0,
                         id: doc.id
                     });
                 }
