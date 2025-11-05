@@ -676,11 +676,16 @@ function filterLinks(filter) {
     }
     // 'all' shows everything
     
+    // Apply current sort order
+    const sortSelect = document.getElementById('sortSelect');
+    const currentSort = sortSelect?.value || 'recent';
+    filtered = applySortOrder(filtered, currentSort);
+    
     displayLinks(filtered, filter);
 }
 
-function sortLinks(sortBy) {
-    let sorted = [...userLinks];
+function applySortOrder(links, sortBy) {
+    let sorted = [...links];
     
     if (sortBy === 'recent') {
         sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -690,7 +695,28 @@ function sortLinks(sortBy) {
         sorted.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
     }
     
-    displayLinks(sorted);
+    return sorted;
+}
+
+function sortLinks(sortBy) {
+    let sorted = applySortOrder(userLinks, sortBy);
+    
+    // Apply current filter
+    const filterTabs = document.querySelectorAll('.filter-tab');
+    let currentFilter = 'all';
+    filterTabs.forEach(tab => {
+        if (tab.classList.contains('active')) {
+            currentFilter = tab.dataset.filter;
+        }
+    });
+    
+    if (currentFilter === 'active') {
+        sorted = sorted.filter(link => link.isActive !== false);
+    } else if (currentFilter === 'inactive') {
+        sorted = sorted.filter(link => link.isActive === false);
+    }
+    
+    displayLinks(sorted, currentFilter);
 }
 
 function handleSearch(e) {
