@@ -901,7 +901,8 @@ We welcome contributions from the community! Link360 is open-source and thrives 
 
 1. **Fork the repository**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/Link360.git
+   git clone https://github.com/xthxr/Link360.git
+   cd Link360
    ```
 
 2. **Create a feature branch**
