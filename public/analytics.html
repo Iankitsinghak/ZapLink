@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Regional UTM Analytics - ZapLink</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+                :root {
+            --bg-dark: #0A1015;
+            --bg-card: #111827;
+            --text-light: #F9FAFB;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --clicks-color: #3B82F6;
+            --conversions-color: #10B981;
+            --revenue-color: #F59E0B;
+            --rate-color: #8B5CF6;
+            --map-country-hover: #2563EB;
+            --map-country-selected: #1D4ED8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #F3F4F6;
+        }
+
+        .analytics-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .export-btn {
+            background: var(--primary-green);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            padding: 2rem;
+            border-radius: 1rem;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }        .stat-card h3 {
+            margin: 0 0 0.5rem 0;
+            color: #4B5563;
+            font-size: 0.875rem;
+        }
+
+        .stat-value {
+            font-size: 1.875rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .filters-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        .filter select {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #D1D5DB;
+            border-radius: 0.375rem;
+            background: white;
+        }
+
+        .map-container {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .map {
+            height: 500px;
+            width: 100%;
+        }
+
+        .country {
+            fill: #E5E7EB;
+            stroke: white;
+            stroke-width: 0.5;
+        }
+
+        .country:hover {
+            fill: var(--primary-blue);
+            cursor: pointer;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: white;
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            pointer-events: none;
+            font-size: 0.875rem;
+        }
+
+        .stats-details {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        .details-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .details-list {
+            margin-top: 1rem;
+        }
+
+        .details-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #E5E7EB;
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid,
+            .filters-grid,
+            .stats-details {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 640px) {
+            .stats-grid,
+            .filters-grid,
+            .stats-details {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="analytics-container">
+        <div class="header">
+            <h1>Regional Analytics</h1>
+            <button class="export-btn" @click="exportCSV">Export CSV</button>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card" style="background: rgba(59, 130, 246, 0.1);">
+                <h3 style="color: #93C5FD;">Total Clicks</h3>
+                <p class="stat-value" style="color: #3B82F6; font-size: 2.5rem; margin: 0;">{{ formatNumber(stats.totalClicks) }}</p>
+            </div>
+            <div class="stat-card" style="background: rgba(16, 185, 129, 0.1);">
+                <h3 style="color: #6EE7B7;">Total Conversions</h3>
+                <p class="stat-value" style="color: #10B981; font-size: 2.5rem; margin: 0;">{{ formatNumber(stats.conversions) }}</p>
+            </div>
+            <div class="stat-card" style="background: rgba(245, 158, 11, 0.1);">
+                <h3 style="color: #FCD34D;">Revenue</h3>
+                <p class="stat-value" style="color: #F59E0B; font-size: 2.5rem; margin: 0;">${{ formatNumber(revenue) }}</p>
+            </div>
+            <div class="stat-card" style="background: rgba(139, 92, 246, 0.1);">
+                <h3 style="color: #DDD6FE;">Conv. Rate</h3>
+                <p class="stat-value" style="color: #8B5CF6; font-size: 2.5rem; margin: 0;">{{ conversionRate }}%</p>
+            </div>
+        </div>
+
+        <div class="filters-section">
+            <h2>Filters</h2>
+            <div class="filters-grid">
+                <div class="filter">
+                    <label>Country</label>
+                    <select v-model="selectedCountry">
+                        <option value="all">All Countries</option>
+                        <option v-for="country in countries" :key="country" :value="country">
+                            {{ country }}
+                        </option>
+                    </select>
+                </div>
+                <div class="filter">
+                    <label>City</label>
+                    <select v-model="selectedCity" :disabled="selectedCountry === 'all'">
+                        <option value="all">All Cities</option>
+                        <option v-for="city in filteredCities" :key="city" :value="city">
+                            {{ city }}
+                        </option>
+                    </select>
+                </div>
+                <div class="filter">
+                    <label>Platform</label>
+                    <select v-model="selectedPlatform">
+                        <option value="all">All Platforms</option>
+                        <option v-for="platform in platforms" :key="platform" :value="platform">
+                            {{ platform }}
+                        </option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <h2>Locations</h2>
+            <div id="map" class="map"></div>
+        </div>
+
+        <div class="stats-details">
+            <div class="details-card">
+                <h3>Geographic Data</h3>
+                <div class="details-list">
+                    <div v-for="(data, country) in stats.countries" :key="country" class="details-item">
+                        <span>{{ country }}</span>
+                        <span>{{ formatNumber(data.clicks) }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="details-card">
+                <h3>Devices</h3>
+                <div class="details-list">
+                    <div v-for="(count, device) in stats.devices" :key="device" class="details-item">
+                        <span>{{ device }}</span>
+                        <span>{{ formatNumber(count) }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="details-card">
+                <h3>Browsers</h3>
+                <div class="details-list">
+                    <div v-for="(count, browser) in stats.browsers" :key="browser" class="details-item">
+                        <span>{{ browser }}</span>
+                        <span>{{ formatNumber(count) }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.5.2/firebase-app.js';
+        import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.5.2/firebase-auth.js';
+
+        // Load Firebase config
+        const response = await fetch('/firebase-config.js');
+        const config = await response.text();
+        const firebaseConfig = JSON.parse(config.replace('const firebaseConfig = ', '').replace(';', ''));
+        
+        // Initialize Firebase
+        const firebaseApp = initializeApp(firebaseConfig);
+        const auth = getAuth(firebaseApp);
+
+        const { createApp, ref, computed, onMounted } = Vue
+
+        const app = createApp({
+            setup() {
+                const stats = ref({
+                    totalClicks: 0,
+                    conversions: 0,
+                    countries: {},
+                    cities: {},
+                    devices: {},
+                    browsers: {}
+                })
+
+                const selectedCountry = ref('all')
+                const selectedCity = ref('all')
+                const selectedPlatform = ref('all')
+
+                const revenue = computed(() => stats.value.conversions * 98.17)
+                const conversionRate = computed(() => {
+                    return ((stats.value.conversions / stats.value.totalClicks) * 100).toFixed(2)
+                })
+
+                const countries = computed(() => Object.keys(stats.value.countries))
+                const filteredCities = computed(() => {
+                    if (selectedCountry.value === 'all') return []
+                    return Object.keys(stats.value.cities).filter(city => 
+                        stats.value.cities[city].country === selectedCountry.value
+                    )
+                })
+
+                const platforms = computed(() => Object.keys(stats.value.devices))
+
+                async function fetchData() {
+                    try {
+                        const headers = {};
+                        const authToken = localStorage.getItem('authToken');
+                        if (authToken) {
+                            headers.Authorization = `Bearer ${authToken}`;
+                        }
+                        
+                        const response = await fetch('/api/analytics/geo/latest', { headers })
+                        const data = await response.json()
+                        if (data.error) {
+                            console.error('API Error:', data.error);
+                            return;
+                        }
+                        stats.value = data.stats
+                        updateMap()
+                    } catch (error) {
+                        console.error('Error fetching analytics:', error)
+                        // Show error message to user
+                        const errorToast = document.createElement('div');
+                        errorToast.className = 'toast error';
+                        errorToast.textContent = 'Failed to load analytics data';
+                        document.body.appendChild(errorToast);
+                        setTimeout(() => errorToast.remove(), 3000);
+                    }
+                }
+
+                function formatNumber(num) {
+                    return new Intl.NumberFormat().format(num)
+                }
+
+                function exportCSV() {
+                    const data = [
+                        ['Country', 'Clicks', 'Conversions', 'Revenue'],
+                        ...Object.entries(stats.value.countries).map(([country, data]) => [
+                            country,
+                            data.clicks,
+                            Math.round(data.clicks * 0.1043),
+                            (Math.round(data.clicks * 0.1043) * 98.17).toFixed(2)
+                        ])
+                    ]
+
+                    const csvContent = data.map(row => row.join(',')).join('\n')
+                    const blob = new Blob([csvContent], { type: 'text/csv' })
+                    const url = window.URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.setAttribute('hidden', '')
+                    a.setAttribute('href', url)
+                    a.setAttribute('download', 'geographic_analytics.csv')
+                    document.body.appendChild(a)
+                    a.click()
+                    document.body.removeChild(a)
+                }
+
+                function initMap() {
+                    const width = document.getElementById('map').clientWidth
+                    const height = 600
+                    const svg = d3.select('#map')
+                        .append('svg')
+                        .attr('width', width)
+                        .attr('height', height)
+                        .attr('viewBox', [0, 0, width, height])
+                        .style('background', 'var(--bg-dark)')
+                        .style('border-radius', '0.5rem')
+
+                    // Create tooltip
+                    tooltip.value = d3.select('body')
+                        .append('div')
+                        .attr('class', 'tooltip')
+                        .style('opacity', 0)
+                        .style('position', 'absolute')
+                        .style('pointer-events', 'none')
+                        .style('z-index', 1000)
+
+                    const projection = d3.geoMercator()
+                        .scale(130)
+                        .translate([width / 2, height / 1.5])
+
+                    const path = d3.geoPath()
+                        .projection(projection)
+
+                    fetch('/data/world-atlas.json')
+                        .then(response => response.json())
+                        .then(worldData => {
+                            const countries = topojson.feature(worldData, worldData.objects.countries)
+                            
+                            svg.selectAll('path')
+                                .data(countries.features)
+                                .enter()
+                                .append('path')
+                                .attr('class', 'country')
+                                .attr('d', path)
+                        })
+                }
+
+                function updateMap() {
+                    const colorScale = d3.scaleSequential()
+                        .domain([0, d3.max(Object.values(stats.value.countries), d => d.clicks) || 100])
+                        .interpolator(d3.interpolateBlues)
+
+                    d3.selectAll('.country')
+                        .transition()
+                        .duration(750)
+                        .style('fill', d => {
+                            const countryData = stats.value.countries[d.properties.name]
+                            return countryData ? colorScale(countryData.clicks) : '#E5E7EB'
+                        })
+                }
+
+                onMounted(() => {
+                    initMap();
+                    
+                    // Initialize auth state listener
+                    onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            // User is signed in
+                            const token = await user.getIdToken();
+                            // Store the token for API calls
+                            localStorage.setItem('authToken', token);
+                        }
+                        // Load data regardless of auth state
+                        fetchData();
+                    });
+                    
+                    // Set up real-time updates
+                    const socket = io();
+                    socket.on('analytics-update', (data) => {
+                        stats.value = data.stats;
+                        updateMap();
+                    });
+                    
+                    // Subscribe to global analytics updates
+                    socket.emit('subscribe-global-analytics');
+                })
+
+                return {
+                    stats,
+                    selectedCountry,
+                    selectedCity,
+                    selectedPlatform,
+                    revenue,
+                    conversionRate,
+                    countries,
+                    filteredCities,
+                    platforms,
+                    formatNumber,
+                    exportCSV
+                }
+            }
+        })
+
+        app.mount('#app')
+    </script>
+</body>
+</html>
