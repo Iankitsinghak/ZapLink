@@ -1,0 +1,154 @@
+/* Dark theme base */
+.analytics-page {
+    background-color: #0a0d16;
+    color: #ffffff;
+    min-height: 100vh;
+    padding: 2rem;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Header styles */
+.analytics-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.header-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.btn-export {
+    background-color: #00b894;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+    border-radius: 1rem;
+    padding: 1.5rem;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.stat-title {
+    font-size: 0.875rem;
+    color: #94a3b8;
+    margin-bottom: 0.5rem;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+/* Custom colors for stat cards */
+.stat-blue { background-color: #4299e1; }
+.stat-green { background-color: #48bb78; }
+.stat-orange { background-color: #ed8936; }
+.stat-purple { background-color: #9f7aea; }
+
+/* Filters Section */
+.filters-section {
+    background: rgba(255,255,255,0.05);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.filters-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.filters-header i {
+    color: #94a3b8;
+}
+
+.filters-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.filter-group label {
+    font-size: 0.875rem;
+    color: #94a3b8;
+}
+
+.filter-group select {
+    background-color: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: white;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    width: 100%;
+}
+
+/* Map Section */
+.map-section {
+    background: rgba(255,255,255,0.05);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.map-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.map-title {
+    font-size: 1.25rem;
+    font-weight: 500;
+}
+
+.map-container {
+    aspect-ratio: 16/9;
+    background: rgba(255,255,255,0.02);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+/* Chart tooltips */
+.chart-tooltip {
+    background: rgba(0,0,0,0.8);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    font-size: 0.875rem;
+    color: white;
+    border: 1px solid rgba(255,255,255,0.1);
+}

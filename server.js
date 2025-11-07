@@ -516,13 +516,23 @@ app.get('/:shortCode', async (req, res) => {
   else if (ua.includes('firefox')) browser = 'Firefox';
   else if (ua.includes('opera') || ua.includes('opr')) browser = 'Opera';
   
+  // Get location data from request headers
+  const country = req.headers['cf-ipcountry'] || 'Unknown';
+  const city = req.headers['cf-ipcity'] || 'Unknown';
+  const region = req.headers['cf-ipregion'] || 'Unknown';
+
   const clickData = {
     timestamp: new Date().toISOString(),
     device: deviceType,
     browser,
     referrer: referrerSource,
-    userAgent: userAgent.substring(0, 200), // Store truncated UA for debugging
-    isShared: utmSource ? true : false // Track if this click came from a share
+    userAgent: userAgent.substring(0, 200),
+    isShared: utmSource ? true : false,
+    location: {
+      country,
+      city,
+      region
+    }
   };
 
   try {
@@ -600,6 +610,38 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });
+});
+
+// Serve world map data
+app.get('/world.json', async (req, res) => {
+  try {
+    const worldMapData = {
+      "type": "Topology",
+      "arcs": [],
+      "objects": {
+        "countries": {
+          "type": "GeometryCollection",
+          "geometries": [
+            {
+              "type": "Polygon",
+              "id": "USA",
+              "properties": { "name": "United States" },
+              "arcs": [[0]]
+            },
+            // Add more country geometries here
+          ]
+        }
+      },
+      "transform": {
+        "scale": [1, 1],
+        "translate": [0, 0]
+      }
+    };
+    res.json(worldMapData);
+  } catch (error) {
+    console.error('Error serving world map data:', error);
+    res.status(500).json({ error: 'Failed to serve world map data' });
+  }
 });
 
 // Start server

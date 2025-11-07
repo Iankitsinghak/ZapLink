@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Regional UTM Analytics - ZapLink</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles/toast.css">
+    <link rel="stylesheet" href="/styles/geographic.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Vue.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Unovis -->
+    <script src="https://unpkg.com/@unovis/ts/dist/umd/unovis.js"></script>
+    <script src="https://unpkg.com/@unovis/vue/dist/umd/unovis-vue.js"></script>
+    <!-- TopoJSON -->
+    <script src="https://unpkg.com/topojson-client@3"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="analytics-page">
+    <div class="container">
+        <header class="analytics-header">
+            <div class="header-title">
+                <i class="fas fa-globe"></i>
+                <h1>Regional UTM Analytics</h1>
+            </div>
+            <button class="btn-export">
+                <i class="fas fa-download"></i>
+                Export CSV
+            </button>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-title">Total Clicks</div>
+                <div class="stat-value" id="totalClicks">498,352</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Total Conversions</div>
+                <div class="stat-value" id="totalConversions">51,992</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Revenue</div>
+                <div class="stat-value" id="totalRevenue">$5103.9K</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Conv. Rate</div>
+                <div class="stat-value" id="conversionRate">10.43%</div>
+            </div>
+        </div>
+
+        <!-- Filters Section -->
+        <div class="filters-section">
+            <div class="filters-header">
+                <i class="fas fa-filter"></i>
+                <h2>Filters</h2>
+            </div>
+            <div class="filters-content">
+                <div class="filter-group">
+                    <label for="countryFilter">Country</label>
+                    <select id="countryFilter" v-model="filters.country">
+                        <option value="All">All</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="cityFilter">City</label>
+                    <select id="cityFilter" v-model="filters.city">
+                        <option value="All">All</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="platformFilter">Platform</label>
+                    <select id="platformFilter" v-model="filters.platform">
+                        <option value="All">All</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Map Section -->
+        <div class="map-section">
+            <div class="map-header">
+                <h2 class="map-title">Locations</h2>
+            </div>
+            <div class="map-container">
+                <div class="chart-container">
+                    <vis-single-container 
+                        v-if="worldMapTopoJSON.type"
+                        :data="{ areas: areaData }"
+                        class="h-full">
+                        <vis-topojson-map
+                            :topojson="worldMapTopoJSON"
+                            map-feature-name="countries"
+                        />
+                        <chart-single-tooltip
+                            index="id"
+                            :selector="VisTopoJSONMapSelectors.feature"
+                            :items="areaData"
+                            :value-formatter="valueFormatter"
+                            :custom-tooltip="Tooltip"
+                        />
+                    </vis-single-container>
+                </div>
+            </div>
+        </div>
+
+        <!-- Views Chart -->
+        <div class="views-section">
+            <div class="views-chart">
+                <component
+                    :is="chart"
+                    class="h-[300px] w-full"
+                    index="time"
+                    :data="views"
+                    :categories="['visits', 'visitors']"
+                    :x-formatter="formatTime"
+                    :y-formatter="formatNumber"
+                    :show-grid-line="true"
+                    :show-legend="true"
+                />
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Create Vue App
+        const { createApp, ref, onMounted, watch, computed } = Vue
+
+        createApp({
+            setup() {
+                const worldMapTopoJSON = ref({})
+                const areaData = ref([])
+                const views = ref([])
+                const filters = ref({
+                    country: 'All',
+                    city: 'All',
+                    platform: 'All'
+                })
+
+                // Get World Map JSON
+                async function getWorldMapJSON() {
+                    try {
+                        const response = await fetch('/world.json')
+                        const data = await response.json()
+                        worldMapTopoJSON.value = data
+                    } catch (error) {
+                        console.error('Error loading world map:', error)
+                    }
+                }
+
+                // Get Map Data
+                async function getMapData() {
+                    try {
+                        const response = await fetch('/api/analytics/geographic', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(filters.value)
+                        })
+
+                        const { data } = await response.json()
+                        if (Array.isArray(data)) {
+                            areaData.value = data.map(country => ({
+                                ...country,
+                                id: country.name,
+                                count: country.clicks || 0
+                            }))
+                        }
+                    } catch (error) {
+                        console.error('Error loading map data:', error)
+                    }
+                }
+
+                // Get Views Data
+                async function getViewsData() {
+                    try {
+                        const response = await fetch('/api/analytics/views', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                ...filters.value,
+                                unit: 'day'
+                            })
+                        })
+
+                        const { data } = await response.json()
+                        if (Array.isArray(data)) {
+                            views.value = data.map(item => ({
+                                ...item,
+                                visitors: +item.visitors,
+                                visits: +item.visits
+                            }))
+                        }
+                    } catch (error) {
+                        console.error('Error loading views data:', error)
+                    }
+                }
+
+                // Watch for filter changes
+                watch(filters, () => {
+                    getMapData()
+                    getViewsData()
+                }, { deep: true })
+
+                // Initialize on mount
+                onMounted(() => {
+                    getWorldMapJSON()
+                    getMapData()
+                    getViewsData()
+                })
+
+                // Computed chart component
+                const chart = computed(() => {
+                    return views.value.length > 1 ? 'vis-area-chart' : 'vis-bar-chart'
+                })
+
+                return {
+                    worldMapTopoJSON,
+                    areaData,
+                    views,
+                    filters,
+                    chart,
+                    valueFormatter: v => v?.toLocaleString() || '0',
+                    formatTime: tick => {
+                        if (Number.isInteger(tick) && views.value[tick]) {
+                            return views.value[tick].time
+                        }
+                        return ''
+                    },
+                    formatNumber: v => v?.toLocaleString() || '0',
+                    VisTopoJSONMapSelectors: window.unovis.VisTopoJSONMapSelectors,
+                    Tooltip: {
+                        props: ['title', 'data'],
+                        setup(props) {
+                            return {
+                                render() {
+                                    const country = props.data[1]?.value?.name
+                                    const visits = props.data[3]?.value?.count
+                                    return `
+                                        <div class="chart-tooltip">
+                                            <h3>${country}</h3>
+                                            <div class="tooltip-stat">
+                                                <span class="tooltip-label">Clicks:</span>
+                                                <span class="tooltip-value">${visits?.toLocaleString() || 0}</span>
+                                            </div>
+                                        </div>
+                                    `
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }).mount('.container')
+    </script>
+</body>
+</html>
