@@ -270,22 +270,56 @@
     </div>
 
     <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.5.2/firebase-app.js';
-        import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.5.2/firebase-auth.js';
+        const { createApp, ref, computed, onMounted } = Vue
+        let auth = null;
 
-        // Load Firebase config
-        const response = await fetch('/firebase-config.js');
-        const config = await response.text();
-        const firebaseConfig = JSON.parse(config.replace('const firebaseConfig = ', '').replace(';', ''));
-        
-        // Initialize Firebase
-        const firebaseApp = initializeApp(firebaseConfig);
-        const auth = getAuth(firebaseApp);
+        // Initialize Firebase later to avoid race conditions
+        async function initializeFirebase() {
+            try {
+                const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.5.2/firebase-app.js');
+                const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.5.2/firebase-auth.js');
+                
+                // Load Firebase config
+                const response = await fetch('/firebase-config.js');
+                const configText = await response.text();
+                const configJson = configText.replace('const firebaseConfig = ', '').replace(';', '');
+                const firebaseConfig = JSON.parse(configJson);
+                
+                // Initialize Firebase
+                const firebaseApp = initializeApp(firebaseConfig);
+                auth = getAuth(firebaseApp);
+                return auth;
+            } catch (error) {
+                console.error('Firebase initialization error:', error);
+                return null;
+            }
+        }
 
         const { createApp, ref, computed, onMounted } = Vue
 
         const app = createApp({
             setup() {
+                let auth = null;
+
+                async function initializeFirebase() {
+                    try {
+                        const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.5.2/firebase-app.js');
+                        const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.5.2/firebase-auth.js');
+                        
+                        const response = await fetch('/firebase-config.js');
+                        const configText = await response.text();
+                        const configJson = configText.replace('const firebaseConfig = ', '').replace(';', '');
+                        const firebaseConfig = JSON.parse(configJson);
+                        
+                        const firebaseApp = initializeApp(firebaseConfig);
+                        auth = getAuth(firebaseApp);
+                        return true;
+                    } catch (error) {
+                        console.error('Firebase initialization error:', error);
+                        return false;
+                    }
+                }
+
                 const stats = ref({
                     totalClicks: 0,
                     conversions: 0,
@@ -317,15 +351,14 @@
                 async function fetchData() {
                     try {
                         const headers = {};
-                        // Try to get auth token if available
-                        try {
-                            const user = auth.currentUser;
-                            if (user) {
-                                const token = await user.getIdToken();
+                        // Only add auth header if auth is initialized and we have a user
+                        if (auth && auth.currentUser) {
+                            try {
+                                const token = await auth.currentUser.getIdToken();
                                 headers.Authorization = `Bearer ${token}`;
+                            } catch (error) {
+                                console.log('No valid auth token available');
                             }
-                        } catch (authError) {
-                            console.log('No authenticated user, continuing as public access');
                         }
                         
                         const response = await fetch('/api/analytics/geo/latest', { headers });
@@ -338,7 +371,6 @@
                         updateMap();
                     } catch (error) {
                         console.error('Error fetching analytics:', error);
-                        // Initialize with empty data instead of showing error
                         stats.value = {
                             totalClicks: 0,
                             conversions: 0,
