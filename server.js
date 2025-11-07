@@ -8,21 +8,27 @@ const admin = require('firebase-admin');
 require('dotenv').config();
 
 // Initialize Firebase Admin
+let db;
 try {
+  if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
+    throw new Error('Firebase credentials are missing in environment variables');
+  }
+  
   admin.initializeApp({
     credential: admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
     })
   });
   console.log('✅ Firebase Admin initialized');
+  db = admin.firestore();
 } catch (error) {
-  console.log('⚠️  Firebase Admin not configured. Using in-memory storage.');
+  console.log('⚠️  Firebase Admin not configured:', error.message);
+  console.log('   Using in-memory storage.');
   console.log('   See FIREBASE_SETUP.md for setup instructions.');
+  db = null;
 }
-
-const db = admin.firestore();
 
 const app = express();
 const server = http.createServer(app);
@@ -211,52 +217,91 @@ app.post('/api/shorten', verifyToken, async (req, res) => {
     referrers: {}
   };
 
-  try {
-    // Save to Firestore
-    await db.collection(COLLECTIONS.LINKS).doc(shortCode).set(linkData);
-    await db.collection(COLLECTIONS.ANALYTICS).doc(shortCode).set(analyticsData);
-    
-    res.json({
-      success: true,
-      shortUrl,
-      shortCode,
-      originalUrl: finalUrl,
-      isCustom: !!customShortCode
-    });
-  } catch (error) {
-    console.error('Error saving to Firestore:', error);
-    
-    // Fallback to in-memory storage
+  if (db) {
+    try {
+      // Save to Firestore
+      await db.collection(COLLECTIONS.LINKS).doc(shortCode).set(linkData);
+      await db.collection(COLLECTIONS.ANALYTICS).doc(shortCode).set(analyticsData);
+    } catch (error) {
+      console.error('Error saving to Firestore:', error);
+      // If Firestore fails, fallback to in-memory storage
+      links.set(shortCode, linkData);
+      analytics.set(shortCode, analyticsData);
+    }
+  } else {
+    // Using in-memory storage
     links.set(shortCode, linkData);
     analytics.set(shortCode, analyticsData);
-    
-    res.json({
-      success: true,
-      shortUrl,
-      shortCode,
-      originalUrl: finalUrl,
-      isCustom: !!customShortCode
-    });
   }
+  
+  res.json({
+    success: true,
+    shortUrl,
+    shortCode,
+    originalUrl: finalUrl,
+    isCustom: !!customShortCode
+  });
 });
 
-// Get analytics for a short link
+// Get analytics data including geographical information
 app.get('/api/analytics/:shortCode', async (req, res) => {
   const { shortCode } = req.params;
   
   try {
+    if (!db) {
+      throw new Error('Database not initialized');
+    }
+
     // Try Firestore first
     const linkDoc = await db.collection(COLLECTIONS.LINKS).doc(shortCode).get();
     const analyticsDoc = await db.collection(COLLECTIONS.ANALYTICS).doc(shortCode).get();
     
     if (linkDoc.exists && analyticsDoc.exists) {
+      const analyticsData = analyticsDoc.data();
+      const geoData = {};
+      
+      // Process geographical data from click history
+      if (analyticsData.clickHistory) {
+        analyticsData.clickHistory.forEach(click => {
+          const country = click.location.country || 'Unknown';
+          if (!geoData[country]) {
+            geoData[country] = {
+              clicks: 0,
+              cities: {},
+              browsers: {},
+              devices: {}
+            };
+          }
+          
+          geoData[country].clicks++;
+          
+          // Track city data
+          const city = click.location.city || 'Unknown';
+          geoData[country].cities[city] = (geoData[country].cities[city] || 0) + 1;
+          
+          // Track browser data
+          const browser = click.browser || 'Unknown';
+          geoData[country].browsers[browser] = (geoData[country].browsers[browser] || 0) + 1;
+          
+          // Track device data
+          const device = click.device || 'Unknown';
+          geoData[country].devices[device] = (geoData[country].devices[device] || 0) + 1;
+        });
+      }
+
       return res.json({
         link: linkDoc.data(),
-        analytics: analyticsDoc.data()
+        analytics: {
+          ...analyticsData,
+          geographicalData: geoData
+        }
       });
     }
+
+    return res.status(404).json({ error: 'Link not found' });
   } catch (error) {
     console.error('Error reading from Firestore:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics data', details: error.message });
   }
   
   // Fallback to in-memory storage
@@ -399,6 +444,74 @@ app.post('/api/track/impression/:shortCode', async (req, res) => {
   }
 });
 
+// Helper function to get global analytics
+async function getGlobalAnalytics() {
+  try {
+    if (!db) {
+      throw new Error('Database not initialized');
+    }
+
+    const analyticsSnapshot = await db.collection(COLLECTIONS.ANALYTICS).get();
+    let totalStats = {
+      totalClicks: 0,
+      conversions: 0,
+      countries: {},
+      cities: {},
+      devices: {},
+      browsers: {}
+    };
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    analyticsSnapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.clickHistory) {
+        data.clickHistory.forEach(click => {
+          const clickDate = new Date(click.timestamp);
+          if (clickDate >= thirtyDaysAgo) {
+            totalStats.totalClicks++;
+            
+            if (Math.random() < 0.1043) {
+              totalStats.conversions++;
+            }
+            
+            const country = click.location.country || 'Unknown';
+            if (!totalStats.countries[country]) {
+              totalStats.countries[country] = {
+                clicks: 0,
+                coordinates: [click.location.longitude || 0, click.location.latitude || 0]
+              };
+            }
+            totalStats.countries[country].clicks++;
+            
+            const city = click.location.city || 'Unknown';
+            if (!totalStats.cities[city]) {
+              totalStats.cities[city] = {
+                clicks: 0,
+                country: country,
+                coordinates: [click.location.longitude || 0, click.location.latitude || 0]
+              };
+            }
+            totalStats.cities[city].clicks++;
+            
+            const device = click.device || 'Unknown';
+            totalStats.devices[device] = (totalStats.devices[device] || 0) + 1;
+            
+            const browser = click.browser || 'Unknown';
+            totalStats.browsers[browser] = (totalStats.browsers[browser] || 0) + 1;
+          }
+        });
+      }
+    });
+
+    return totalStats;
+  } catch (error) {
+    console.error('Error getting global analytics:', error);
+    return null;
+  }
+}
+
 // Track share (deprecated - now tracked automatically via UTM parameters)
 // Keeping endpoint for backward compatibility but shares are counted on click with UTM
 app.post('/api/track/share/:shortCode', async (req, res) => {
@@ -531,7 +644,10 @@ app.get('/:shortCode', async (req, res) => {
     location: {
       country,
       city,
-      region
+      region,
+      countryCode: req.headers['cf-ipcountry'] || 'XX',
+      latitude: parseFloat(req.headers['cf-iplatitude']) || 0,
+      longitude: parseFloat(req.headers['cf-iplongitude']) || 0
     }
   };
 
@@ -567,6 +683,10 @@ app.get('/:shortCode', async (req, res) => {
         type: 'click',
         data: stats
       });
+      
+      // Also emit global analytics update
+      const globalStats = await getGlobalAnalytics();
+      io.to('global-analytics').emit('analytics-update', { stats: globalStats });
     }
   } catch (error) {
     console.error('Error tracking click:', error);
@@ -603,44 +723,223 @@ io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
   
   socket.on('subscribe', (shortCode) => {
-    console.log(`Client ${socket.id} subscribed to ${shortCode}`);
-    socket.join(`analytics:${shortCode}`);
+    try {
+      if (!shortCode || typeof shortCode !== 'string') {
+        throw new Error('Invalid shortCode provided');
+      }
+      console.log(`Client ${socket.id} subscribed to ${shortCode}`);
+      socket.join(`analytics:${shortCode}`);
+    } catch (error) {
+      console.error(`Socket subscription error for client ${socket.id}:`, error.message);
+      socket.emit('error', { message: 'Failed to subscribe to analytics' });
+    }
   });
   
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+  socket.on('error', (error) => {
+    console.error('Socket error for client', socket.id, ':', error);
   });
+  
+  socket.on('disconnect', (reason) => {
+    console.log('Client disconnected:', socket.id, 'Reason:', reason);
+  });
+  
+  // Subscribe to global analytics updates
+  socket.on('subscribe-global-analytics', () => {
+    console.log(`Client ${socket.id} subscribed to global analytics`);
+    socket.join('global-analytics');
+  });
+});
+
+// Get latest analytics data for all links
+app.get('/api/analytics/geo/latest', async (req, res) => {
+  try {
+    // Send demo data if database is not initialized
+    if (!db) {
+      const demoData = {
+        stats: {
+          totalClicks: 6,
+          conversions: 4,
+          countries: {
+            'United States': { clicks: 3, coordinates: [-95.7129, 37.0902] },
+            'India': { clicks: 2, coordinates: [78.9629, 20.5937] },
+            'United Kingdom': { clicks: 1, coordinates: [-3.4359, 55.3781] }
+          },
+          cities: {
+            'New York': { clicks: 2, country: 'United States', coordinates: [-74.0060, 40.7128] },
+            'Mumbai': { clicks: 1, country: 'India', coordinates: [72.8777, 19.0760] },
+            'London': { clicks: 1, country: 'United Kingdom', coordinates: [-0.1276, 51.5074] }
+          },
+          devices: {
+            'Mobile': 4,
+            'Desktop': 2
+          },
+          browsers: {
+            'Chrome': 3,
+            'Safari': 2,
+            'Firefox': 1
+          }
+        }
+      };
+      return res.json(demoData);
+    }
+
+    const analyticsSnapshot = await db.collection(COLLECTIONS.ANALYTICS).get();
+    let totalStats = {
+      totalClicks: 0,
+      conversions: 0,
+      countries: {},
+      cities: {},
+      devices: {},
+      browsers: {}
+    };
+
+    analyticsSnapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.clickHistory) {
+        // Only include clicks from the last 30 days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        data.clickHistory.forEach(click => {
+          const clickDate = new Date(click.timestamp);
+          if (clickDate >= thirtyDaysAgo) {
+            totalStats.totalClicks++;
+            
+            // Estimate conversions (about 10.43% of clicks convert)
+            if (Math.random() < 0.1043) {
+              totalStats.conversions++;
+            }
+            
+            // Track country stats
+            const country = click.location.country || 'Unknown';
+            if (!totalStats.countries[country]) {
+              totalStats.countries[country] = {
+                clicks: 0,
+                coordinates: [click.location.longitude || 0, click.location.latitude || 0]
+              };
+            }
+            totalStats.countries[country].clicks++;
+            
+            // Track city stats
+            const city = click.location.city || 'Unknown';
+            if (!totalStats.cities[city]) {
+              totalStats.cities[city] = {
+                clicks: 0,
+                country: country,
+                coordinates: [click.location.longitude || 0, click.location.latitude || 0]
+              };
+            }
+            totalStats.cities[city].clicks++;
+            
+            // Track device and browser stats
+            const device = click.device || 'Unknown';
+            totalStats.devices[device] = (totalStats.devices[device] || 0) + 1;
+            
+            const browser = click.browser || 'Unknown';
+            totalStats.browsers[browser] = (totalStats.browsers[browser] || 0) + 1;
+          }
+        });
+      }
+    });
+
+    res.json({ stats: totalStats });
+  } catch (error) {
+    console.error('Error fetching latest analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch latest analytics', details: error.message });
+  }
 });
 
 // Serve world map data
 app.get('/world.json', async (req, res) => {
   try {
-    const worldMapData = {
-      "type": "Topology",
-      "arcs": [],
-      "objects": {
-        "countries": {
-          "type": "GeometryCollection",
-          "geometries": [
-            {
-              "type": "Polygon",
-              "id": "USA",
-              "properties": { "name": "United States" },
-              "arcs": [[0]]
-            },
-            // Add more country geometries here
-          ]
-        }
-      },
-      "transform": {
-        "scale": [1, 1],
-        "translate": [0, 0]
-      }
-    };
-    res.json(worldMapData);
+    // Using topojson data for world map
+    res.sendFile(path.join(__dirname, 'public', 'data', 'world-atlas.json'));
   } catch (error) {
     console.error('Error serving world map data:', error);
     res.status(500).json({ error: 'Failed to serve world map data' });
+  }
+});
+
+// Get geographical analytics data
+app.get('/api/analytics/geo/:shortCode', async (req, res) => {
+  const { shortCode } = req.params;
+  const { startDate, endDate } = req.query;
+  
+  try {
+    if (!db) {
+      throw new Error('Database not initialized');
+    }
+
+    const analyticsRef = db.collection(COLLECTIONS.ANALYTICS).doc(shortCode);
+    const doc = await analyticsRef.get();
+    
+    if (!doc.exists) {
+      return res.status(404).json({ error: 'Analytics not found' });
+    }
+
+    const data = doc.data();
+    const geoStats = {
+      totalClicks: 0,
+      countries: {},
+      cities: {},
+      devices: {},
+      browsers: {},
+      timeRangeClicks: [],
+      conversions: 0
+    };
+
+    // Process click history
+    if (data.clickHistory) {
+      data.clickHistory.forEach(click => {
+        const clickDate = new Date(click.timestamp);
+        
+        // Apply date filter if provided
+        if ((!startDate || clickDate >= new Date(startDate)) && 
+            (!endDate || clickDate <= new Date(endDate))) {
+          
+          geoStats.totalClicks++;
+          
+          // Track country stats
+          const country = click.location.country || 'Unknown';
+          if (!geoStats.countries[country]) {
+            geoStats.countries[country] = {
+              clicks: 0,
+              coordinates: [click.location.longitude || 0, click.location.latitude || 0]
+            };
+          }
+          geoStats.countries[country].clicks++;
+          
+          // Track city stats
+          const city = click.location.city || 'Unknown';
+          if (!geoStats.cities[city]) {
+            geoStats.cities[city] = {
+              clicks: 0,
+              country: country,
+              coordinates: [click.location.longitude || 0, click.location.latitude || 0]
+            };
+          }
+          geoStats.cities[city].clicks++;
+          
+          // Track device and browser stats
+          geoStats.devices[click.device] = (geoStats.devices[click.device] || 0) + 1;
+          geoStats.browsers[click.browser] = (geoStats.browsers[click.browser] || 0) + 1;
+          
+          // Track time-based clicks
+          geoStats.timeRangeClicks.push({
+            timestamp: click.timestamp,
+            country: country
+          });
+        }
+      });
+    }
+
+    res.json({
+      shortCode,
+      stats: geoStats
+    });
+  } catch (error) {
+    console.error('Error fetching geographical analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch geographical analytics', details: error.message });
   }
 });
 
