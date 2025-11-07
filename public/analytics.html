@@ -317,27 +317,37 @@
                 async function fetchData() {
                     try {
                         const headers = {};
-                        const authToken = localStorage.getItem('authToken');
-                        if (authToken) {
-                            headers.Authorization = `Bearer ${authToken}`;
+                        // Try to get auth token if available
+                        try {
+                            const user = auth.currentUser;
+                            if (user) {
+                                const token = await user.getIdToken();
+                                headers.Authorization = `Bearer ${token}`;
+                            }
+                        } catch (authError) {
+                            console.log('No authenticated user, continuing as public access');
                         }
                         
-                        const response = await fetch('/api/analytics/geo/latest', { headers })
-                        const data = await response.json()
+                        const response = await fetch('/api/analytics/geo/latest', { headers });
+                        const data = await response.json();
                         if (data.error) {
                             console.error('API Error:', data.error);
                             return;
                         }
-                        stats.value = data.stats
-                        updateMap()
+                        stats.value = data.stats;
+                        updateMap();
                     } catch (error) {
-                        console.error('Error fetching analytics:', error)
-                        // Show error message to user
-                        const errorToast = document.createElement('div');
-                        errorToast.className = 'toast error';
-                        errorToast.textContent = 'Failed to load analytics data';
-                        document.body.appendChild(errorToast);
-                        setTimeout(() => errorToast.remove(), 3000);
+                        console.error('Error fetching analytics:', error);
+                        // Initialize with empty data instead of showing error
+                        stats.value = {
+                            totalClicks: 0,
+                            conversions: 0,
+                            countries: {},
+                            cities: {},
+                            devices: {},
+                            browsers: {}
+                        };
+                        updateMap();
                     }
                 }
 
@@ -428,11 +438,15 @@
                     
                     // Initialize auth state listener
                     onAuthStateChanged(auth, async (user) => {
-                        if (user) {
-                            // User is signed in
-                            const token = await user.getIdToken();
-                            // Store the token for API calls
-                            localStorage.setItem('authToken', token);
+                        try {
+                            if (user) {
+                                // User is signed in
+                                const token = await user.getIdToken();
+                                // Store the token for API calls
+                                localStorage.setItem('authToken', token);
+                            }
+                        } catch (error) {
+                            console.error('Auth error:', error);
                         }
                         // Load data regardless of auth state
                         fetchData();

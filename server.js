@@ -753,8 +753,12 @@ io.on('connection', (socket) => {
 // Get latest analytics data for all links
 app.get('/api/analytics/geo/latest', async (req, res) => {
   try {
-    // Send demo data if database is not initialized
-    if (!db) {
+    // Allow public access to aggregated analytics
+    const authHeader = req.headers.authorization;
+    const isAuthenticated = authHeader && authHeader.startsWith('Bearer ');
+    
+    // Send demo data if database is not initialized or user is not authenticated
+    if (!db || !isAuthenticated) {
       const demoData = {
         stats: {
           totalClicks: 6,
