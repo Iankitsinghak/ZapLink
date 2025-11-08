@@ -270,41 +270,17 @@
     </div>
 
     <script type="module">
-        const { createApp, ref, computed, onMounted } = Vue
-        let auth = null;
-
-        // Initialize Firebase later to avoid race conditions
-        async function initializeFirebase() {
-            try {
-                const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.5.2/firebase-app.js');
-                const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.5.2/firebase-auth.js');
-                
-                // Load Firebase config
-                const response = await fetch('/firebase-config.js');
-                const configText = await response.text();
-                const configJson = configText.replace('const firebaseConfig = ', '').replace(';', '');
-                const firebaseConfig = JSON.parse(configJson);
-                
-                // Initialize Firebase
-                const firebaseApp = initializeApp(firebaseConfig);
-                auth = getAuth(firebaseApp);
-                return auth;
-            } catch (error) {
-                console.error('Firebase initialization error:', error);
-                return null;
-            }
-        }
-
-        const { createApp, ref, computed, onMounted } = Vue
+        const { createApp, ref, computed, onMounted } = Vue;
 
         const app = createApp({
             setup() {
                 let auth = null;
+                let tooltip = ref(null);
 
                 async function initializeFirebase() {
                     try {
                         const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.5.2/firebase-app.js');
-                        const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.5.2/firebase-auth.js');
+                        const { getAuth, onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.5.2/firebase-auth.js');
                         
                         const response = await fetch('/firebase-config.js');
                         const configText = await response.text();
@@ -313,6 +289,21 @@
                         
                         const firebaseApp = initializeApp(firebaseConfig);
                         auth = getAuth(firebaseApp);
+
+                        // Set up auth state listener
+                        onAuthStateChanged(auth, async (user) => {
+                            try {
+                                if (user) {
+                                    const token = await user.getIdToken();
+                                    localStorage.setItem('authToken', token);
+                                }
+                            } catch (error) {
+                                console.error('Auth error:', error);
+                            }
+                            // Load data regardless of auth state
+                            fetchData();
+                        });
+
                         return true;
                     } catch (error) {
                         console.error('Firebase initialization error:', error);
@@ -465,34 +456,43 @@
                         })
                 }
 
-                onMounted(() => {
+                onMounted(async () => {
+                    // Initialize Firebase first
+                    await initializeFirebase();
+                    
+                    // Initialize the map
                     initMap();
                     
-                    // Initialize auth state listener
-                    onAuthStateChanged(auth, async (user) => {
-                        try {
-                            if (user) {
-                                // User is signed in
-                                const token = await user.getIdToken();
-                                // Store the token for API calls
-                                localStorage.setItem('authToken', token);
-                            }
-                        } catch (error) {
-                            console.error('Auth error:', error);
-                        }
-                        // Load data regardless of auth state
-                        fetchData();
-                    });
+                    // Initial data fetch
+                    await fetchData();
                     
                     // Set up real-time updates
                     const socket = io();
                     socket.on('analytics-update', (data) => {
-                        stats.value = data.stats;
-                        updateMap();
+                        if (data && data.stats) {
+                            stats.value = data.stats;
+                            updateMap();
+                        }
                     });
                     
                     // Subscribe to global analytics updates
                     socket.emit('subscribe-global-analytics');
+                    
+                    // Set up window resize handler for map
+                    window.addEventListener('resize', () => {
+                        // Debounce the resize event
+                        clearTimeout(window.resizeTimer);
+                        window.resizeTimer = setTimeout(() => {
+                            const mapContainer = document.getElementById('map');
+                            if (mapContainer) {
+                                const width = mapContainer.clientWidth;
+                                d3.select('#map svg')
+                                    .attr('width', width)
+                                    .attr('viewBox', [0, 0, width, 600]);
+                                updateMap();
+                            }
+                        }, 250);
+                    });
                 })
 
                 return {
