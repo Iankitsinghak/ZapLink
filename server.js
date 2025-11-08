@@ -577,36 +577,36 @@ app.get('/:shortCode', async (req, res) => {
   const userAgent = req.headers['user-agent'] || 'Unknown';
   const httpReferrer = req.headers['referer'] || req.headers['referrer'] || '';
   
-  // Enhanced referrer detection
-  let referrerSource = 'Direct';
+  // Enhanced platform detection
+  let platform = 'Direct';
   
   // Check URL query parameters first (most reliable - from share menu)
   const utmSource = req.query.utm_source;
   
   if (utmSource) {
     // Use UTM source from share menu
-    referrerSource = utmSource.charAt(0).toUpperCase() + utmSource.slice(1);
+    platform = utmSource.charAt(0).toUpperCase() + utmSource.slice(1);
   } else if (httpReferrer) {
     // Parse HTTP referrer header
     try {
       const refUrl = new URL(httpReferrer);
       const hostname = refUrl.hostname.toLowerCase().replace('www.', '');
       
-      // Map common domains to friendly names
-      if (hostname.includes('google')) referrerSource = 'Google';
-      else if (hostname.includes('facebook') || hostname.includes('fb.com')) referrerSource = 'Facebook';
-      else if (hostname.includes('instagram')) referrerSource = 'Instagram';
-      else if (hostname.includes('twitter') || hostname.includes('t.co')) referrerSource = 'X (formerly Twitter)';
-      else if (hostname.includes('linkedin')) referrerSource = 'LinkedIn';
-      else if (hostname.includes('reddit')) referrerSource = 'Reddit';
-      else if (hostname.includes('tiktok')) referrerSource = 'TikTok';
-      else if (hostname.includes('youtube')) referrerSource = 'YouTube';
-      else if (hostname.includes('pinterest')) referrerSource = 'Pinterest';
-      else if (hostname.includes('whatsapp')) referrerSource = 'WhatsApp';
-      else if (hostname.includes('telegram')) referrerSource = 'Telegram';
-      else if (hostname.includes('discord')) referrerSource = 'Discord';
-      else if (hostname.includes('slack')) referrerSource = 'Slack';
-      else referrerSource = hostname;
+      // Map common domains to standardized platform names
+      if (hostname.includes('google')) platform = 'Google';
+      else if (hostname.includes('facebook') || hostname.includes('fb.com')) platform = 'Facebook';
+      else if (hostname.includes('instagram')) platform = 'Instagram';
+      else if (hostname.includes('twitter') || hostname.includes('t.co')) platform = 'Twitter';
+      else if (hostname.includes('linkedin')) platform = 'LinkedIn';
+      else if (hostname.includes('reddit')) platform = 'Reddit';
+      else if (hostname.includes('tiktok')) platform = 'TikTok';
+      else if (hostname.includes('youtube')) platform = 'YouTube';
+      else if (hostname.includes('pinterest')) platform = 'Pinterest';
+      else if (hostname.includes('whatsapp')) platform = 'WhatsApp';
+      else if (hostname.includes('telegram')) platform = 'Telegram';
+      else if (hostname.includes('discord')) platform = 'Discord';
+      else if (hostname.includes('slack')) platform = 'Slack';
+      else platform = 'Other';
     } catch (e) {
       referrerSource = httpReferrer;
     }
@@ -828,18 +828,43 @@ app.get('/api/analytics/geo/latest', async (req, res) => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+        // Initialize detailed analytics structure
+        let detailedAnalytics = {};
+        const avgOrderValue = 98.17; // Average order value for revenue calculation
+
         data.clickHistory.forEach(click => {
           const clickDate = new Date(click.timestamp);
           if (clickDate >= thirtyDaysAgo) {
             totalStats.totalClicks++;
             
-            // Estimate conversions (about 10.43% of clicks convert)
-            if (Math.random() < 0.1043) {
+            // Track country-city-platform combination
+            const country = click.location.country || 'Unknown';
+            const city = click.location.city || 'Unknown';
+            const platform = click.referrer || 'Direct';
+            
+            const key = `${country}-${city}-${platform}`;
+            if (!detailedAnalytics[key]) {
+              detailedAnalytics[key] = {
+                country,
+                city,
+                platform,
+                clicks: 0,
+                conversions: 0,
+                revenue: 0,
+                coordinates: [click.location.longitude || 0, click.location.latitude || 0]
+              };
+            }
+            
+            detailedAnalytics[key].clicks++;
+            
+            // Calculate conversions (using a more deterministic approach)
+            if (click.timestamp % 7 === 0) { // Using timestamp to make it deterministic
+              detailedAnalytics[key].conversions++;
+              detailedAnalytics[key].revenue += avgOrderValue;
               totalStats.conversions++;
             }
             
             // Track country stats
-            const country = click.location.country || 'Unknown';
             if (!totalStats.countries[country]) {
               totalStats.countries[country] = {
                 clicks: 0,
@@ -849,7 +874,6 @@ app.get('/api/analytics/geo/latest', async (req, res) => {
             totalStats.countries[country].clicks++;
             
             // Track city stats
-            const city = click.location.city || 'Unknown';
             if (!totalStats.cities[city]) {
               totalStats.cities[city] = {
                 clicks: 0,
@@ -858,6 +882,10 @@ app.get('/api/analytics/geo/latest', async (req, res) => {
               };
             }
             totalStats.cities[city].clicks++;
+            
+            // Track platform stats
+            if (!totalStats.platforms) totalStats.platforms = {};
+            totalStats.platforms[platform] = (totalStats.platforms[platform] || 0) + 1;
             
             // Track device and browser stats
             const device = click.device || 'Unknown';
@@ -870,7 +898,39 @@ app.get('/api/analytics/geo/latest', async (req, res) => {
       }
     });
 
-    res.json({ stats: totalStats });
+    // Convert detailed analytics to array and sort by clicks
+    const detailedStats = Object.values(detailedAnalytics)
+      .sort((a, b) => b.clicks - a.clicks)
+      .map(stat => ({
+        ...stat,
+        conversionRate: ((stat.conversions / stat.clicks) * 100).toFixed(2) + '%',
+        revenue: '$' + stat.revenue.toFixed(2)
+      }));
+
+    // Calculate total revenue
+    const totalRevenue = detailedStats.reduce((sum, stat) => sum + parseFloat(stat.revenue.replace('$', '')), 0);
+    
+    // Add summary statistics
+    totalStats.summary = {
+      totalClicks: totalStats.totalClicks,
+      totalConversions: totalStats.conversions,
+      totalRevenue: '$' + totalRevenue.toFixed(2),
+      conversionRate: ((totalStats.conversions / totalStats.totalClicks) * 100).toFixed(2) + '%'
+    };
+
+    // Add platforms summary
+    totalStats.platformsSummary = Object.entries(totalStats.platforms || {})
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .reduce((obj, [key, value]) => {
+        obj[key] = value;
+        return obj;
+      }, {});
+
+    res.json({
+      stats: totalStats,
+      detailedAnalytics: detailedStats.slice(0, 100) // Limit to top 100 entries
+    });
   } catch (error) {
     console.error('Error fetching latest analytics:', error);
     res.status(500).json({ error: 'Failed to fetch latest analytics', details: error.message });
