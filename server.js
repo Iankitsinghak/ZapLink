@@ -528,6 +528,26 @@ app.get(['/', '/home', '/analytics', '/profile'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Track impression without redirect (for link previews - HEAD request)
+app.head('/:shortCode', async (req, res) => {
+  const { shortCode } = req.params;
+  
+  try {
+    const analyticsRef = db.collection(COLLECTIONS.ANALYTICS).doc(shortCode);
+    const doc = await analyticsRef.get();
+    
+    if (doc.exists) {
+      await analyticsRef.update({
+        impressions: admin.firestore.FieldValue.increment(1)
+      });
+    }
+  } catch (error) {
+    console.error('Error tracking impression:', error);
+  }
+  
+  res.status(200).end();
+});
+
 // Redirect short link and track click
 app.get('/:shortCode', async (req, res) => {
   const { shortCode } = req.params;
@@ -659,8 +679,11 @@ app.get('/:shortCode', async (req, res) => {
     if (doc.exists) {
       const currentData = doc.data();
       
-      // Increment shares if this click has a UTM source (meaning it was shared)
+      // Increment impressions AND clicks
+      // Impressions represent total views (including clicks)
+      // This way: impressions >= clicks always
       const updateData = {
+        impressions: admin.firestore.FieldValue.increment(1),
         clicks: admin.firestore.FieldValue.increment(1),
         [`devices.${deviceType}`]: admin.firestore.FieldValue.increment(1),
         [`browsers.${browser}`]: admin.firestore.FieldValue.increment(1),
@@ -694,6 +717,7 @@ app.get('/:shortCode', async (req, res) => {
     // Fallback to in-memory
     const stats = analytics.get(shortCode);
     if (stats) {
+      stats.impressions++;
       stats.clicks++;
       stats.devices[deviceType] = (stats.devices[deviceType] || 0) + 1;
       stats.browsers[browser] = (stats.browsers[browser] || 0) + 1;

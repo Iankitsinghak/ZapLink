@@ -65,6 +65,15 @@ const emptyState = document.getElementById('emptyState');
 const filterTabs = document.querySelectorAll('.filter-tab');
 const sortSelect = document.getElementById('sortSelect');
 const searchInput = document.getElementById('searchInput');
+const searchClear = document.getElementById('searchClear');
+const searchSuggestions = document.getElementById('searchSuggestions');
+
+// Global search data
+let searchableContent = {
+    links: [],
+    features: [],
+    pages: []
+};
 
 // Form Elements
 const customShortCode = document.getElementById('customShortCode');
@@ -311,10 +320,30 @@ function initializeEventListeners() {
         logoutBtn.addEventListener('click', handleLogout);
     }
     
-    // Search
+    // Global Search
     if (searchInput) {
-        searchInput.addEventListener('input', handleSearch);
+        searchInput.addEventListener('input', handleGlobalSearch);
+        searchInput.addEventListener('focus', () => {
+            if (searchInput.value.trim()) {
+                searchSuggestions.style.display = 'block';
+            }
+        });
     }
+    
+    if (searchClear) {
+        searchClear.addEventListener('click', () => {
+            searchInput.value = '';
+            searchClear.style.display = 'none';
+            searchSuggestions.style.display = 'none';
+        });
+    }
+    
+    // Close search suggestions when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.search-container')) {
+            searchSuggestions.style.display = 'none';
+        }
+    });
     
     // Bug Report Modal
     if (reportBugBtn) {
@@ -440,12 +469,17 @@ async function initializeAuth() {
                 currentUser = user;
                 showAuthenticatedUI();
                 
-                // Restore last visited page or default to home
-                const savedPage = localStorage.getItem('link360-current-page');
-                if (savedPage) {
-                    navigateToPage(savedPage);
-                } else {
+                // Get current page from URL instead of localStorage
+                const currentPath = window.location.pathname;
+                const currentPageFromUrl = currentPath.substring(1) || 'home';
+                
+                // Load data for the current page
+                if (currentPageFromUrl === 'home') {
                     loadLinks();
+                } else if (currentPageFromUrl === 'analytics') {
+                    loadAnalytics();
+                } else if (currentPageFromUrl === 'profile') {
+                    loadProfile();
                 }
             } else {
                 showLoginModal();
@@ -467,8 +501,9 @@ async function initializeAuth() {
                 
                 // Close login modal and restore page
                 loginModal.style.display = 'none';
-                const savedPage = localStorage.getItem('link360-current-page') || 'home';
-                navigateToPage(savedPage);
+                const currentPath = window.location.pathname;
+                const currentPageFromUrl = currentPath.substring(1) || 'home';
+                navigateToPage(currentPageFromUrl);
             }
         }).catch((error) => {
             console.error('Redirect error:', error);
@@ -937,6 +972,201 @@ function handleSearch(e) {
 }
 
 // ================================
+// GLOBAL SEARCH
+// ================================
+
+function initializeGlobalSearch() {
+    // Define searchable features
+    searchableContent.features = [
+        { name: 'Create Link', description: 'Shorten a new URL', icon: 'plus', action: () => openCreateLinkModal() },
+        { name: 'Analytics Dashboard', description: 'View detailed analytics', icon: 'chart-line', action: () => navigateToPage('analytics') },
+        { name: 'QR Code Generator', description: 'Generate QR codes for links', icon: 'qrcode', action: () => openCreateLinkModal() },
+        { name: 'Custom Short Code', description: 'Create custom branded links', icon: 'edit', action: () => openCreateLinkModal() },
+        { name: 'UTM Parameters', description: 'Add tracking parameters', icon: 'tags', action: () => openCreateLinkModal() },
+        { name: 'Report Bug', description: 'Report an issue', icon: 'bug', action: () => openBugReportModal() },
+        { name: 'Dark Mode', description: 'Toggle dark theme', icon: 'moon', action: () => setTheme('dark') },
+        { name: 'Light Mode', description: 'Toggle light theme', icon: 'sun', action: () => setTheme('light') },
+    ];
+    
+    // Define searchable pages
+    searchableContent.pages = [
+        { name: 'Home', description: 'View all your links', icon: 'home', path: 'home' },
+        { name: 'Analytics', description: 'Detailed analytics dashboard', icon: 'chart-line', path: 'analytics' },
+        { name: 'Profile', description: 'Manage your profile', icon: 'user', path: 'profile' },
+    ];
+}
+
+function handleGlobalSearch(e) {
+    const query = e.target.value.trim();
+    
+    // Show/hide clear button
+    if (searchClear) {
+        searchClear.style.display = query ? 'block' : 'none';
+    }
+    
+    if (query.length < 2) {
+        searchSuggestions.style.display = 'none';
+        return;
+    }
+    
+    const results = performGlobalSearch(query);
+    displaySearchSuggestions(results);
+}
+
+function performGlobalSearch(query) {
+    const lowerQuery = query.toLowerCase();
+    const results = {
+        links: [],
+        features: [],
+        pages: []
+    };
+    
+    // Search links
+    results.links = userLinks
+        .filter(link => 
+            link.originalUrl.toLowerCase().includes(lowerQuery) ||
+            link.shortUrl.toLowerCase().includes(lowerQuery) ||
+            link.shortCode.toLowerCase().includes(lowerQuery)
+        )
+        .slice(0, 5); // Limit to 5 results
+    
+    // Search features
+    results.features = searchableContent.features
+        .filter(feature => 
+            feature.name.toLowerCase().includes(lowerQuery) ||
+            feature.description.toLowerCase().includes(lowerQuery)
+        )
+        .slice(0, 4);
+    
+    // Search pages
+    results.pages = searchableContent.pages
+        .filter(page => 
+            page.name.toLowerCase().includes(lowerQuery) ||
+            page.description.toLowerCase().includes(lowerQuery)
+        );
+    
+    return results;
+}
+
+function displaySearchSuggestions(results) {
+    const hasResults = results.links.length > 0 || results.features.length > 0 || results.pages.length > 0;
+    
+    if (!hasResults) {
+        searchSuggestions.innerHTML = `
+            <div class="search-no-results">
+                <i class="fas fa-search"></i>
+                <p>No results found</p>
+            </div>
+        `;
+        searchSuggestions.style.display = 'block';
+        return;
+    }
+    
+    let html = '';
+    
+    // Display links
+    if (results.links.length > 0) {
+        html += `
+            <div class="search-suggestion-group">
+                <div class="search-suggestion-header">Links</div>
+                ${results.links.map(link => `
+                    <div class="search-suggestion-item" onclick="handleSuggestionClick('link', '${link.shortCode}')">
+                        <div class="search-suggestion-icon link">
+                            <i class="fas fa-link"></i>
+                        </div>
+                        <div class="search-suggestion-content">
+                            <div class="search-suggestion-title">${escapeHtml(link.shortUrl)}</div>
+                            <div class="search-suggestion-subtitle">${escapeHtml(truncateText(link.originalUrl, 50))}</div>
+                        </div>
+                        <div class="search-suggestion-meta">${link.clicks || 0} clicks</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    // Display features
+    if (results.features.length > 0) {
+        html += `
+            <div class="search-suggestion-group">
+                <div class="search-suggestion-header">Features</div>
+                ${results.features.map((feature, index) => `
+                    <div class="search-suggestion-item" onclick="handleSuggestionClick('feature', ${index})">
+                        <div class="search-suggestion-icon feature">
+                            <i class="fas fa-${feature.icon}"></i>
+                        </div>
+                        <div class="search-suggestion-content">
+                            <div class="search-suggestion-title">${escapeHtml(feature.name)}</div>
+                            <div class="search-suggestion-subtitle">${escapeHtml(feature.description)}</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    // Display pages
+    if (results.pages.length > 0) {
+        html += `
+            <div class="search-suggestion-group">
+                <div class="search-suggestion-header">Pages</div>
+                ${results.pages.map(page => `
+                    <div class="search-suggestion-item" onclick="handleSuggestionClick('page', '${page.path}')">
+                        <div class="search-suggestion-icon page">
+                            <i class="fas fa-${page.icon}"></i>
+                        </div>
+                        <div class="search-suggestion-content">
+                            <div class="search-suggestion-title">${escapeHtml(page.name)}</div>
+                            <div class="search-suggestion-subtitle">${escapeHtml(page.description)}</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    searchSuggestions.innerHTML = html;
+    searchSuggestions.style.display = 'block';
+}
+
+function handleSuggestionClick(type, data) {
+    // Close suggestions
+    searchSuggestions.style.display = 'none';
+    searchInput.value = '';
+    searchClear.style.display = 'none';
+    
+    if (type === 'link') {
+        // Navigate to analytics for this specific link
+        viewAnalytics(data);
+    } else if (type === 'feature') {
+        // Execute feature action
+        const feature = searchableContent.features[data];
+        if (feature && feature.action) {
+            feature.action();
+        }
+    } else if (type === 'page') {
+        // Navigate to page
+        navigateToPage(data);
+    }
+}
+
+function truncateText(text, maxLength) {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Initialize global search when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    initializeGlobalSearch();
+});
+
+// ================================
 // LINK ACTIONS
 // ================================
 
@@ -1162,22 +1392,58 @@ async function loadAnalytics() {
     // Load analytics overview
     const analyticsLinkSelect = document.getElementById('analyticsLinkSelect');
     
-    // Populate link selector
-    if (analyticsLinkSelect && userLinks.length > 0) {
-        analyticsLinkSelect.innerHTML = '<option value="all">All Links</option>' +
-            userLinks.map(link => `<option value="${link.shortCode}">${link.shortUrl}</option>`).join('');
+    // Fetch user's links if not already loaded
+    if (!currentUser) return;
+    
+    try {
+        if (typeof firebase === 'undefined' || !firebase.firestore) {
+            console.log('Firestore not available');
+            return;
+        }
         
-        // Add change listener
-        analyticsLinkSelect.addEventListener('change', () => {
-            loadAnalyticsData(analyticsLinkSelect.value);
+        const db = firebase.firestore();
+        
+        // Fetch links to populate dropdown
+        const linksSnapshot = await db.collection('links')
+            .where('userId', '==', currentUser.uid)
+            .get();
+        
+        const links = [];
+        linksSnapshot.forEach(doc => {
+            const linkData = doc.data();
+            links.push({
+                shortCode: linkData.shortCode,
+                shortUrl: linkData.shortUrl,
+                originalUrl: linkData.originalUrl
+            });
         });
+        
+        // Populate link selector
+        if (analyticsLinkSelect && links.length > 0) {
+            analyticsLinkSelect.innerHTML = '<option value="all">All Links</option>' +
+                links.map(link => `<option value="${link.shortCode}">${link.shortUrl}</option>`).join('');
+            
+            // Remove previous listener if exists
+            const newSelect = analyticsLinkSelect.cloneNode(true);
+            analyticsLinkSelect.parentNode.replaceChild(newSelect, analyticsLinkSelect);
+            
+            // Add change listener to new element
+            newSelect.addEventListener('change', () => {
+                loadAnalyticsData(newSelect.value);
+                setupAnalyticsRealtime(newSelect.value);
+            });
+        }
+        
+        // Load analytics data
+        loadAnalyticsData('all');
+        
+        // Set up real-time listener
+        setupAnalyticsRealtime('all');
+        
+    } catch (error) {
+        console.error('Error loading analytics:', error);
+        showToast('Failed to load analytics links', 'error');
     }
-    
-    // Load analytics data
-    loadAnalyticsData('all');
-    
-    // Set up real-time listener
-    setupAnalyticsRealtime('all');
 }
 
 async function loadLinkAnalytics(shortCode) {
@@ -1261,8 +1527,15 @@ async function loadAnalyticsData(linkFilter) {
             return;
         }
         
+        // Check if user is authenticated
+        if (!currentUser || !currentUser.uid) {
+            console.log('User not authenticated yet, skipping analytics load');
+            return;
+        }
+        
         const db = firebase.firestore();
         let totalClicks = 0;
+        let totalImpressions = 0;
         let uniqueVisitors = new Set();
         let countries = new Set();
         let devices = {};
@@ -1301,8 +1574,9 @@ async function loadAnalyticsData(linkFilter) {
                 
                 console.log(`Analytics for ${shortCode}:`, analytics);
                 
-                // Aggregate clicks
+                // Aggregate clicks and impressions
                 totalClicks += analytics.clicks || 0;
+                totalImpressions += analytics.impressions || 0;
                 
                 // Merge devices
                 if (analytics.devices) {
@@ -1354,15 +1628,52 @@ async function loadAnalyticsData(linkFilter) {
         });
         const uniqueVisitorsCount = visitorFingerprints.size || totalClicks; // Fallback to total clicks if no history
         
-        // Calculate average daily clicks
-        const daysCount = Math.max(1, Math.ceil((Date.now() - (allClickHistory[0] ? new Date(allClickHistory[0].timestamp).getTime() : Date.now())) / (1000 * 60 * 60 * 24)));
-        const avgDaily = Math.round(totalClicks / daysCount);
+        // Calculate CTR (Click-Through Rate)
+        const ctr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100) : 0;
+        
+        // Calculate percentage changes (compare last 7 days vs previous 7 days)
+        const now = Date.now();
+        const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+        const fourteenDaysAgo = now - (14 * 24 * 60 * 60 * 1000);
+        
+        let currentPeriodClicks = 0;
+        let previousPeriodClicks = 0;
+        let currentPeriodVisitors = new Set();
+        let previousPeriodVisitors = new Set();
+        
+        allClickHistory.forEach(click => {
+            const clickTime = new Date(click.timestamp).getTime();
+            const fingerprint = `${click.referrer}_${click.device}_${click.browser}`;
+            
+            if (clickTime >= sevenDaysAgo) {
+                currentPeriodClicks++;
+                currentPeriodVisitors.add(fingerprint);
+            } else if (clickTime >= fourteenDaysAgo && clickTime < sevenDaysAgo) {
+                previousPeriodClicks++;
+                previousPeriodVisitors.add(fingerprint);
+            }
+        });
+        
+        // Calculate percentage changes
+        const clicksChange = calculatePercentageChange(currentPeriodClicks, previousPeriodClicks);
+        const visitorsChange = calculatePercentageChange(currentPeriodVisitors.size, previousPeriodVisitors.size);
+        
+        // For impressions and CTR, we'll need to implement historical tracking
+        // For now, we'll only show if we have comparison data
+        const impressionsChange = null; // Will implement when we have historical impression data
+        const ctrChange = null; // Will implement when we have historical CTR data
         
         // Update analytics stats in UI
+        document.getElementById('analyticsImpressions').textContent = totalImpressions.toLocaleString();
         document.getElementById('analyticsClicks').textContent = totalClicks.toLocaleString();
+        document.getElementById('analyticsCTR').textContent = ctr.toFixed(1) + '%';
         document.getElementById('analyticsVisitors').textContent = uniqueVisitorsCount.toLocaleString();
-        document.getElementById('analyticsCountries').textContent = countries.size.toLocaleString();
-        document.getElementById('analyticsAvgDaily').textContent = avgDaily.toLocaleString();
+        
+        // Update percentage changes (only show if we have comparison data)
+        updateStatChange('impressionsChange', impressionsChange);
+        updateStatChange('clicksChange', clicksChange);
+        updateStatChange('ctrChange', ctrChange);
+        updateStatChange('visitorsChange', visitorsChange);
         
         // Process clicks over time with dynamic granularity
         const clicksOverTimeData = processClicksOverTime(allClickHistory);
@@ -1394,10 +1705,11 @@ async function loadAnalyticsData(linkFilter) {
         renderReferrersList(topReferrers);
         
         console.log('✅ Analytics loaded successfully:', {
+            totalImpressions,
             totalClicks,
+            ctr: ctr.toFixed(1) + '%',
             uniqueVisitors: uniqueVisitorsCount,
-            countries: countries.size,
-            avgDaily
+            countries: countries.size
         });
         
     } catch (error) {
@@ -1633,6 +1945,33 @@ function renderReferrersList(data) {
     `).join('') || '<p style="color: var(--text-secondary); text-align: center;">No data available</p>';
 }
 
+// Calculate percentage change between current and previous period
+function calculatePercentageChange(current, previous) {
+    if (previous === 0) {
+        return current > 0 ? { value: 100, isPositive: true } : null;
+    }
+    const change = ((current - previous) / previous) * 100;
+    return {
+        value: Math.abs(change),
+        isPositive: change >= 0
+    };
+}
+
+// Update stat change element
+function updateStatChange(elementId, changeData) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    if (!changeData || changeData.value === 0) {
+        element.style.display = 'none';
+        return;
+    }
+    
+    element.style.display = 'block';
+    element.className = `stat-change ${changeData.isPositive ? 'positive' : 'negative'}`;
+    element.textContent = `${changeData.isPositive ? '+' : '-'}${changeData.value.toFixed(1)}%`;
+}
+
 // ================================
 // PROFILE
 // ================================
@@ -1726,6 +2065,7 @@ window.showQRCode = showQRCode;
 window.downloadQR = downloadQR;
 window.shareLink = shareLink;
 window.deleteLink = deleteLink;
+window.handleSuggestionClick = handleSuggestionClick;
 
 // ================================
 // BUG REPORT FUNCTIONALITY
