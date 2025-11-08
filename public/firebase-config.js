@@ -13,14 +13,23 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-firebase.initializeApp(firebaseConfig);
+try {
+  if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
 
-// Initialize services
-const auth = firebase.auth();
-const db = firebase.firestore();
+  // Initialize services
+  const auth = firebase.auth();
+  const db = firebase.firestore();
 
-// Configure Google Auth Provider
-const googleProvider = new firebase.auth.GoogleAuthProvider();
-googleProvider.setCustomParameters({
-  prompt: 'select_account'
-});
+  // Configure Google Auth Provider
+  const googleProvider = new firebase.auth.GoogleAuthProvider();
+  googleProvider.setCustomParameters({
+    prompt: 'select_account'
+  });
+
+  console.log('✅ Firebase client initialized successfully');
+} catch (error) {
+  console.error('❌ Failed to initialize Firebase client:', error);
+  alert('Failed to initialize Firebase. Please check your internet connection and reload the page.');
+}
